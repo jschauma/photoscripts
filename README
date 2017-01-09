@@ -1,0 +1,112 @@
+This directory contains a bunch of scripts that I use
+to organize photos into HTML albums.  They are not
+likely of any interest or use to other people and are
+stored here entirely for my own convenience and
+backup.
+
+Requirements:
+- ImageMagick
+- ffmpeg
+
+They are:
+
+- 'adddate'
+
+  A script to add a timestamp to a picture from
+  another picture.  This can be useful if you have a
+  modified image that lost the original timestamp.
+
+  adddate original.jpg copy.jpg
+
+- 'combinevideos'
+
+  A script to combine a number of videos into a single
+  video.  The original videos remain unmodified, the
+  combined output will be 'combined.mov'.
+
+  combinevideos 1.mov 2.mov 3.mov
+
+- 'dedupe'
+
+  A very dumb way of removing duplicates by renaming
+  each file to the name of its md5 checksum.
+  Subsequent copies will thus overwrite the previous
+  copy, thereby removing duplicates.
+
+  Iterates over all files in the current working
+  directory.
+
+
+- 'livegif'
+
+  A script to turn an Apple 'Live' photo (in '.mov'
+  format) into a gif.  Takes as argument 'v' to
+  indicate a vertical orientation (480x640), 's'
+  to indicate a square format (480x480) or 'h'
+  (default) for a horizontal format (640x480).
+
+  A third parameter may be given to indicate that the
+  gif should loop.
+
+  livegif photo.mov v loop
+
+- 'prepvideos'
+
+  A script to iterate over all movies in the current
+  working directory to create medium sized scaled down
+  videos as well as aa picture from the first frame.
+  The video and frame picture will be renamed to the
+  timestamp.  Output files will be .ogv.
+
+- 'shift-instagrampic'
+
+  Kinda the same as 'adddate'?  I forgot why I have
+  this.
+
+- 'sortpics'
+
+  This script iterates over files named *.gif, *.jpg,
+  *.JPG, *.png, and *.PNG, and extracts the timestamp
+  from the EXIF data.
+
+  From that data, it builds an array of "final names",
+  which is a pathname under
+  "../all/<year>/<month>/<day>" with the filename
+  being the full timestamp (e.g.
+  2017-01-01T13-14-15.jpg).  The script then moves the
+  original file to this location.
+
+  Next, the script creates medium and thumbnail sized
+  copies of the original (in the current working
+  directory) and then uses the file '../tmpl' to generate
+  an HTML file for each picture as well as an HTML
+  index.
+
+  As with most of my scripts, you can pass multiple
+  '-v' flags to increase the verbosity of the tool;
+  you can use the '-d' flag to not make any
+  actual changes and the '-t' flag to only rename
+  the files by timestamp, without generating HTML.
+
+---
+
+With these scripts, processing a large batch of photos
+basically goes like this:
+
+- store all photos and videos in a new folder, cd to
+  it
+- dedupe
+- run 'livegif' to turn live photos into gifs;
+  (live pics are accompanied by a .AAE file)
+- remove live .movs
+- run 'prepvideos' to process all remaining videos
+- sortpics -d
+- manually add timestamps to pictures where needed
+- sortpics -t
+
+Now all pictures are named by date.  Create folders
+for your albums by date and move photos into them.
+
+Finally run 'sortpics' again; this will generate the
+HTML files and index.  You can then add captions to
+the HTML files as needed.

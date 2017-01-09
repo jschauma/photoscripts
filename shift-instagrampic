@@ -1,0 +1,9 @@
+#! /bin/sh
+set -e
+in="${1:?"Usage: shift-instragrampic <orig> <instgram>"}"
+out="${2:?"Usage: shift-instagrampic <orig> <instagram>"}"
+
+date=$(strings "${in}" | egrep "^[0-9][0-9][0-9][0-9]:[0-9][0-9]" | tail -1)
+exiftool -P -CreateDate="${date}" "${out}"
+rm "${in}"
+rm "${out}_original"

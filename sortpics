@@ -1,0 +1,388 @@
+#! /usr/bin/env perl
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use POSIX;
+
+###
+### Globals
+###
+
+my %OPTS = ( "verbosity" => 0 );
+
+my $EXIT_FAILURE = 1;
+my $EXIT_SUCCESS = 0;
+my @PICTURES;
+my $DATE = strftime("%Y-%m-%d", localtime());
+my $CWD = `basename \$PWD | tail -1`;
+my $TBLCOUNT = 0;
+chomp($CWD);
+
+my %FILE_DATA;
+
+###
+### Subroutines
+###
+
+sub sortpics() {
+	my @files=`ls *.gif *.jpg *.jpeg *.JPG *.png *.PNG`;
+	verbose("Gathering data for " . $#files . " pictures...");
+
+	foreach my $f (@files) {
+		my $suffix = "";
+		chomp($f);
+		verbose("Processing $f...", 2);
+
+		if ($f =~ m/.*\.(.*)/) {
+			$suffix = lc($1);
+		} else {
+			print "no suffix: $f\n";
+		}
+
+		# If it's a symlink, let's boldly assume it already points
+		# to the right name.  Just add to the array.
+		if (-l $f) {
+			my $ln = readlink($f) || die "Unable to readlink $f: $!\n";
+			unlink($f);
+			push(@PICTURES, $ln);
+			next;
+		}
+
+		open(P, "-|", "strings", "$f") or die "$f: $!\n";
+		my ($year, $month, $day, $time);
+		my ($dir, $finalname);
+		while (my $line = <P>) {
+			if ($line =~ m/([0-9]{4})(?:[:-])([0-9]{2})(?:[:-])([0-9]{2})(?:[ T])([0-9]{2}:[0-9]{2}:[0-9]{2})/ ) {
+				$year = $1;
+				$month = $2;
+				$day = $3;
+				$time = $4;
+
+				$day =~ s/:/-/g;
+				$time =~ s/:/-/g;
+			}
+		}
+		close(P);
+
+		if (!$time) {
+			print STDERR "Can't determine date stamp for $f. Skipping.\n";
+			exit(1);
+		}
+
+		$time =~ s/[ :]/-/g;
+
+		$dir = "../all/$year/$month/$day";
+		$finalname="$dir/$time.$suffix";
+
+		$FILE_DATA{$f} = ();
+		$FILE_DATA{$f}{'dir'} = $dir;
+		$FILE_DATA{$f}{'finalname'} = $finalname;
+
+		verbose("Would become " . pathToFilename($finalname), 3);
+	}
+}
+
+sub moveFiles() {
+	verbose("Moving files...");
+	foreach my $f (keys(%FILE_DATA)) {
+		my $finalname = $FILE_DATA{$f}{'finalname'};
+		my $dir = $FILE_DATA{$f}{'dir'};
+
+		if ($OPTS{'timestamp'}) {
+
+			if ($f =~ m/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/) {
+				verbose("$f is already timestamped. Not renaming.", 2);
+				next;
+			}
+
+			my $newname = pathToFilename($finalname);
+			verbose("$f becomes $newname", 2);
+			if ($OPTS{'dont'}) {
+				print "mv $f $newname\n";
+			} else {
+				system("mv $f $newname");
+			}
+			next;
+		}
+
+		if (! -d $dir) {
+			if ($OPTS{'dont'}) {
+				print "mkdir -p -m 755 $dir\n";
+			} else {
+				system("mkdir -p -m 755 $dir");
+			}
+		}
+		verbose("$f => $finalname", 2);
+
+		if ($OPTS{'dont'}) {
+			print "mv \"$f\" $finalname\nchmod a+r,a-x $finalname\n";
+		} else {
+			system("mv \"$f\" $finalname");
+			system("chmod a+r,a-x $finalname");
+		}
+		push(@PICTURES, $finalname);
+	}
+}
+
+sub pathToFilename($) {
+	my ($f) = @_;
+
+	$f =~ s/\.\.\/all\/(\d{4})\/(\d{2})\/(\d{2})\/(\d{2})-(\d{2})-(\d{2}).(jpg|png|gif)/$1-$2-$3T$4-$5-$6.$7/;
+
+	return $f;
+}
+
+sub createFiles() {
+
+	verbose("Creating files...");
+	my $total = scalar(@PICTURES);
+	my $len = length($total);
+	my $n = 0;
+
+	if ($len < 3) {
+		$len = 3;
+	}
+
+	my @pics = sort(@PICTURES);
+	for my $i (0 .. $#pics) {
+		verbose("Creating files for picture #$i (" . $pics[$i] . ")...", 2);
+		my ($f, $p, $n);
+		my ($fn, $pn, $nn);
+
+		$f = $pics[$i];
+		$p = ($i == 0) ? $pics[$#pics] : $pics[$i - 1];
+		$n = ($i == $#pics) ? $pics[0] : $pics[$i + 1];
+
+		chomp($f);
+		$fn = pathToFilename($f);
+		$pn = pathToFilename($p);
+		$nn = pathToFilename($n);
+
+		if ($OPTS{'dont'}) {
+			print "ln -s $f $fn\n";
+		} else {
+			system("ln -s $f $fn");
+		}
+
+		mogrify($fn);
+
+		if ( -f "../tmpl" ) {
+			htmlify($fn, $pn, $nn);
+		}
+		$n++;
+	}
+}
+
+sub getLastDir() {
+	opendir(DIR, "../") or die "../: $!\n";
+	my @dirs = grep { /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ } readdir(DIR);
+	closedir(DIR);
+	my $latest;
+
+	foreach my $d (sort(@dirs)) {
+		if ($d eq $CWD) {
+			last;
+		}
+		$latest = $d;
+	}
+	return $latest;
+}
+
+sub genIndexHead() {
+	verbose("Generating index header...");
+	if ($OPTS{'dont'}) {
+		return;
+	}
+	open(FILE, ">", "index.html") or die "index.html: $!\n";
+	print FILE <<EOH
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+"http://www.w3.org/TR/REC-html040/loose.dtd">
+
+<HTML>
+  <HEAD>
+   <META http-equiv="content-type" content=
+    "text/html; charset=iso-088059-1">
+
+    <TITLE>$CWD</TITLE>
+  </HEAD>
+
+  <BODY>
+    <TABLE border="1">
+      <TR>
+EOH
+}
+
+
+sub genIndexFoot() {
+	verbose("Generating index footer...");
+	if ($OPTS{'dont'}) {
+		return;
+	}
+	my $prev = getLastDir();
+	open(FILE, ">>", "index.html") or die "index.html: $!\n";
+
+	while ($TBLCOUNT % 5) {
+		print FILE "\t\t\t<TD>&nbsp;</TD>\n";
+		$TBLCOUNT++;
+	}
+	print FILE <<EOF
+	</TR>
+    </TABLE>
+    <HR noshade>
+    [<a href="../">Back to index</a>]<br>
+    [<a href="../$prev/">Previous pictures</a>]<br>
+    <HR noshade>
+  </BODY>
+</HTML>
+EOF
+}
+
+sub mogrify($) {
+	my ($pic) = @_;
+	my $rotate = "";
+
+	verbose("Mogrifying $pic...", 3);
+
+	my $rot = `exiftool -Orientation -S -n $pic | awk '{print \$2 }'`;
+	if (!$rot) {
+		$rot = 0;
+	}
+	if ($rot == 3) {
+		$rotate = "-rotate 180";
+	} elsif ($rot == 6) {
+		$rotate = "-rotate 90";
+	}
+
+	$pic =~ s/(.*)\.(jpg|gif|png)/$1/;
+	my $suffix = $2;
+
+	my @cmds = (
+		"rm -f $pic-thumb.jpg $pic-med.* >/dev/null 2>&1",
+		"convert $rotate -size 120x120 $pic.$suffix -resize 120x120 +profile \"*\" $pic-thumb.jpg",
+	);
+
+	if ($suffix eq "gif") {
+		push(@cmds, "cp $pic.gif $pic-med.gif");
+	} else {
+		push(@cmds, "convert $rotate -size 640x480 $pic.jpg -resize 640x480 +profile \"*\" $pic-med.jpg");
+	}
+
+	foreach my $cmd (@cmds) {
+		if ($OPTS{'dont'}) {
+			print "$cmd\n";
+		} else {
+			system($cmd);
+		}
+	}
+}
+
+sub htmlify($$$) {
+	my ($file, $prev, $next) = @_;
+
+	$file =~ s/(.*)\.(jpg|gif|png)/$1/;
+	$prev =~ s/(.*)\.(jpg|gif|png)/$1/;
+	$next =~ s/(.*)\.(jpg|gif|png)/$1/;
+
+	verbose("Htmlifying $file ($prev, $next)...", 3);
+	if ($OPTS{'dont'}) {
+		return;
+	}
+
+	my $fdate = $file;
+	$fdate =~ s/.*(\d{4}-\d{2}-\d{2})T.*/$1/g;
+
+	open(TMPL, "<", "../tmpl") or die "../tmpl: $!\n";
+	open(FILE, ">", "$file.html") or die "$file.html: $!\n";
+	my $date = $file;
+	$date =~ s/(\d)T(\d)/$1 $2/;
+	$date =~ s/(.*) (\d+)-(\d+)-(\d+)/$1 $2:$3:$4/;
+	while (my $line = <TMPL>) {
+		$line =~ s/::NUM::/$file/g;
+		$line =~ s/::NUM-1::/$prev/g;
+		$line =~ s/::NUM\+1::/$next/g;
+		$line =~ s/::DATE::/$date/g;
+		print FILE $line;
+	}
+	close(TMPL);
+	close(FILE);
+
+	open(INDEX, ">>", "index.html") or die "index.html: $!\n";
+	if (($TBLCOUNT > 4) && !($TBLCOUNT % 5)) {
+		print INDEX "\t\t</TR>\n";
+		print INDEX "\t\t<TR>\n";
+	}
+	print INDEX "\t\t\t<TD align=\"center\" valign=\"middle\"><A href=\"$file.html\"><IMG\n";
+	print INDEX "\t\t\tsrc=\"$file-thumb.jpg\" border=\"0\" alt=\"thumbnail\"></A></TD>\n";
+	$TBLCOUNT++;
+
+	close(INDEX);
+}
+
+sub usage(;$) {
+	my ($flag) = @_;
+	my $out = *STDOUT;
+
+	if ($flag) {
+		$out = *STDERR;
+	}
+
+	printf $out "$0: [-dhtv]\n";
+	printf $out "        -d  don't do anything, just say what would be done\n";
+	printf $out "        -h  print this help and exit\n";
+	printf $out "        -t  timestamp pictures only, no HTML generation\n";
+	printf $out "        -v  increase verbosity\n";
+}
+
+sub verbose($;$) {
+	my ($msg, $level) = @_;
+
+	if (!$level) {
+		$level = 1;
+	}
+
+	if ($level <= $OPTS{'verbosity'}) {
+		my $n = 0;
+		print STDERR "=" x $level;
+		print STDERR "> $msg\n";
+	}
+}
+
+###
+### Main
+###
+
+my $result = GetOptions("help|h" => \$OPTS{'help'},
+			"dont|d" => \$OPTS{'dont'},
+			"timestamp|t" => \$OPTS{'timestamp'},
+			"verbose|v" => sub { $OPTS{'verbosity'} = $OPTS{'verbosity'} + 1; } );
+
+if (!$result || $OPTS{'help'}) {
+	usage(!$result);
+	exit(!$result);
+	# NOTREACHED
+}
+
+if (scalar(@ARGV)) {
+	usage(1);
+	exit($EXIT_FAILURE);
+}
+
+
+sortpics();
+moveFiles();
+
+if ($OPTS{'timestamp'}) {
+	exit(0);
+}
+
+genIndexHead();
+createFiles();
+genIndexFoot();
+
+if ($OPTS{'dont'}) {
+	print "chmod a+r,a-x *\n";
+} else {
+	system("chmod a+r,a-x *");
+}

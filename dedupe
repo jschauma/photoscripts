@@ -1,0 +1,7 @@
+#! /bin/sh
+
+for f in *; do
+	suffix="${f##*.}"
+	md5=$(md5 <"${f}" | tr '[a-z]' '[A-Z]')
+	echo mv "${f}" "${md5}.${suffix}"
+done

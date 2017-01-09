@@ -1,0 +1,15 @@
+#! /bin/sh
+
+n=0
+filter=""
+iflags=""
+
+for i in $@; do
+	iflags="${iflags} -i ${i}"
+	filter="${filter}${filter:+ }[${n}:0] [${n}:1]"
+	n=$(( ${n} + 1 ))
+done
+
+eval ffmpeg ${iflags} 							\
+	-filter_complex \'${filter} concat=n=${n}:v=1:a=1 [v] [a]\'	\
+	-map '[v]' -map '[a]' combined.mov
