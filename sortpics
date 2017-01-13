@@ -27,7 +27,7 @@ my %FILE_DATA;
 ###
 
 sub sortpics() {
-	my @files=`ls *.gif *.jpg *.jpeg *.JPG *.png *.PNG`;
+	my @files=`ls *.gif *.jpg *.JPG *.png *.PNG`;
 	verbose("Gathering data for " . $#files . " pictures...");
 
 	foreach my $f (@files) {
@@ -264,7 +264,8 @@ sub mogrify($) {
 	);
 
 	if ($suffix eq "gif") {
-		push(@cmds, "cp $pic.gif $pic-med.gif");
+		push(@cmds, "mv $pic-thumb-0.jpg $pic-thumb.jpg");
+		push(@cmds, "rm $pic-thumb-*");
 	} else {
 		push(@cmds, "convert $rotate -size 640x480 $pic.jpg -resize 640x480 +profile \"*\" $pic-med.jpg");
 	}
