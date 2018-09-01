@@ -1,0 +1,25 @@
+#! /bin/sh
+
+set -e
+
+palette="/tmp/palette.png"
+
+filters="fps=15,scale=640:-1:flags=lanczos"
+
+
+
+for f in *.gif.*; do
+	gif="${f%.*}"
+	ffmpeg -v warning -i "${f}" -vf "${filters},palettegen" -y "${palette}"
+	ffmpeg -v warning -i "${f}" -i "${palette}" -lavfi "${filters} [x]; [x][1:v] paletteuse" -y "${gif}"
+	date=$(strings ${f} | egrep "^[0-9][0-9][0-9][0-9]-[0-9][0-9]" | tail -1)
+	if [ -z "${date}" ]; then
+		echo "Unable to find date in ${f} - run exiftool yourself."
+	else
+		date="$( echo "${date}" | sed -e 's/:/-/g' -e 's/[+-][0-9][0-9][0-9][0-9]//' )"
+		mv "${gif}" "${date}.gif"
+		rm "${f}"
+	fi
+done
+
+rm -f /tmp/palette.png

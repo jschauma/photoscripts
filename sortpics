@@ -3,7 +3,7 @@
 use strict;
 use warnings;
 
-use Getopt::Long;
+use Getopt::Long qw(:config no_ignore_case bundling);
 use POSIX;
 
 ###
@@ -27,7 +27,7 @@ my %FILE_DATA;
 ###
 
 sub sortpics() {
-	my @files=`ls *.gif *.jpg *.JPG *.png *.PNG`;
+	my @files = glob("*.gif *.jpg *.JPG *.png *.PNG");
 	verbose("Gathering data for " . $#files . " pictures...");
 
 	foreach my $f (@files) {
@@ -50,11 +50,24 @@ sub sortpics() {
 			next;
 		}
 
-		open(P, "-|", "strings", "$f") or die "$f: $!\n";
 		my ($year, $month, $day, $time);
 		my ($dir, $finalname);
-		while (my $line = <P>) {
-			if ($line =~ m/([0-9]{4})(?:[:-])([0-9]{2})(?:[:-])([0-9]{2})(?:[ T])([0-9]{2}:[0-9]{2}:[0-9]{2})/ ) {
+		if (!$OPTS{'timestamp-from-names'}) {
+			open(P, "-|", "strings", "$f") or die "$f: $!\n";
+			while (my $line = <P>) {
+				if ($line =~ m/([0-9]{4})(?:[:-])([0-9]{2})(?:[:-])([0-9]{2})(?:[ T])([0-9]{2}:[0-9]{2}:[0-9]{2})/ ) {
+					$year = $1;
+					$month = $2;
+					$day = $3;
+					$time = $4;
+
+					$day =~ s/:/-/g;
+					$time =~ s/:/-/g;
+				}
+			}
+			close(P);
+		} else {
+			if ($f =~ m/([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}-[0-9]{2}-[0-9]{2})/ ) {
 				$year = $1;
 				$month = $2;
 				$day = $3;
@@ -64,11 +77,14 @@ sub sortpics() {
 				$time =~ s/:/-/g;
 			}
 		}
-		close(P);
 
 		if (!$time) {
 			print STDERR "Can't determine date stamp for $f. Skipping.\n";
-			exit(1);
+			if (!$OPTS{'dont'}) {
+				exit(1);
+			} else {
+				next;
+			}
 		}
 
 		$time =~ s/[ :]/-/g;
@@ -100,9 +116,9 @@ sub moveFiles() {
 			my $newname = pathToFilename($finalname);
 			verbose("$f becomes $newname", 2);
 			if ($OPTS{'dont'}) {
-				print "mv $f $newname\n";
+				print "mv \"$f\" $newname\n";
 			} else {
-				system("mv $f $newname");
+				system("mv \"$f\" $newname");
 			}
 			next;
 		}
@@ -161,9 +177,9 @@ sub createFiles() {
 		$nn = pathToFilename($n);
 
 		if ($OPTS{'dont'}) {
-			print "ln -s $f $fn\n";
+			print "ln -s \"$f\" $fn\n";
 		} else {
-			system("ln -s $f $fn");
+			system("ln -s \"$f\" $fn");
 		}
 
 		mogrify($fn);
@@ -282,6 +298,9 @@ sub mogrify($) {
 sub htmlify($$$) {
 	my ($file, $prev, $next) = @_;
 
+	my $gif = 0;
+	my $movie = 0;
+
 	$file =~ s/(.*)\.(jpg|gif|png)/$1/;
 	$prev =~ s/(.*)\.(jpg|gif|png)/$1/;
 	$next =~ s/(.*)\.(jpg|gif|png)/$1/;
@@ -289,6 +308,14 @@ sub htmlify($$$) {
 	verbose("Htmlifying $file ($prev, $next)...", 3);
 	if ($OPTS{'dont'}) {
 		return;
+	}
+
+	if ( -f "$file.gif" ) {
+		$gif = 1;
+	}
+
+	if ( -f "$file-small.ogv" ) {
+		$movie = 1;
 	}
 
 	my $fdate = $file;
@@ -299,8 +326,19 @@ sub htmlify($$$) {
 	my $date = $file;
 	$date =~ s/(\d)T(\d)/$1 $2/;
 	$date =~ s/(.*) (\d+)-(\d+)-(\d+)/$1 $2:$3:$4/;
+	my $year = $1;
+	$year =~ s/(\d+)-.*/$1/;
 	while (my $line = <TMPL>) {
-		$line =~ s/::NUM::/$file/g;
+		if ($gif) {
+			$line =~ s/::NUM::-med.jpg/$file.gif/g;
+			$line =~ s/<a href="::NUM::.jpg">//;
+			$line =~ s/<\/a>//;
+			$line =~ s/::NUM::/$file/g;
+		} elsif ($movie) {
+			$line =~ s|<td><a href="::NUM::.jpg"><img alt="::NUM::" src="::NUM::-med.jpg" border="0"></a><br>|<td><video src="/movies/$year/$file-small.ogv" controls poster="$file-med.jpg"><br>|;
+		} else {
+			$line =~ s/::NUM::/$file/g;
+		}
 		$line =~ s/::NUM-1::/$prev/g;
 		$line =~ s/::NUM\+1::/$next/g;
 		$line =~ s/::DATE::/$date/g;
@@ -330,6 +368,7 @@ sub usage(;$) {
 	}
 
 	printf $out "$0: [-dhtv]\n";
+	printf $out "        -T  timestamp pictures from file names\n";
 	printf $out "        -d  don't do anything, just say what would be done\n";
 	printf $out "        -h  print this help and exit\n";
 	printf $out "        -t  timestamp pictures only, no HTML generation\n";
@@ -354,10 +393,11 @@ sub verbose($;$) {
 ### Main
 ###
 
-my $result = GetOptions("help|h" => \$OPTS{'help'},
-			"dont|d" => \$OPTS{'dont'},
-			"timestamp|t" => \$OPTS{'timestamp'},
-			"verbose|v" => sub { $OPTS{'verbosity'} = $OPTS{'verbosity'} + 1; } );
+my $result = GetOptions("help|h"                 => \$OPTS{'help'},
+			"dont|d"                 => \$OPTS{'dont'},
+			"timestamp|t"            => \$OPTS{'timestamp'},
+			"timestamp-from-names|T" => \$OPTS{'timestamp-from-names'},
+			"verbose|v"              => sub { $OPTS{'verbosity'} = $OPTS{'verbosity'} + 1; } );
 
 if (!$result || $OPTS{'help'}) {
 	usage(!$result);
@@ -369,7 +409,6 @@ if (scalar(@ARGV)) {
 	usage(1);
 	exit($EXIT_FAILURE);
 }
-
 
 sortpics();
 moveFiles();

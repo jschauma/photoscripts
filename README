@@ -36,6 +36,11 @@ They are:
   Iterates over all files in the current working
   directory.
 
+- 'gifify'
+
+  Loops over all files named '*.gif.mov' and turns
+  them into looping gifs.
+
 
 - 'livegif'
 
@@ -57,6 +62,10 @@ They are:
   videos as well as aa picture from the first frame.
   The video and frame picture will be renamed to the
   timestamp.  Output files will be .ogv.
+
+  (Note: slow-mo videos are a pain.  You need to open
+  them in Quicktime, then 'export as' .mov, then
+  convert that .mov to .ogv.)
 
 - 'shift-instagrampic'
 
@@ -98,6 +107,9 @@ basically goes like this:
 - dedupe
 - run 'livegif' to turn live photos into gifs;
   (live pics are accompanied by a .AAE file)
+- alternatively, use 'gifify' after naming all the
+  live photos you wanted to have as gifs as
+  'whatever.gif.mov'
 - remove live .movs
 - run 'prepvideos' to process all remaining videos
 - sortpics -d
