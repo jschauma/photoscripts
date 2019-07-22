@@ -1,10 +1,16 @@
 #! /bin/sh
 
-file="${1:?"Usage: $0 mov [v|h]"}"
-orientation="${2:?"Usage: $0 mov [v|h|s]"}"
-loop="${3}"
+file="${1:?"Usage: $0 mov [v|h|s] [resolution] [loop]"}"
+orientation="${2:?"Usage: $0 mov [v|h|s] [resolution] [loop]"}"
+resolution="${3}"
+loop="${4}"
 
-o="640x480"
+if [ -z "${3}" ]; then
+	o="640x480"
+else
+	o="${resolution}"
+fi
+
 gif="${file%%.*}".gif
 
 if [ -z "${loop}" ]; then
@@ -12,9 +18,13 @@ if [ -z "${loop}" ]; then
 fi
 
 if [ x"${orientation}" = x"v" ]; then
-	o="480x640"
+	if [ -z "${3}" ]; then
+		o="480x640"
+	fi
 elif [ x"${orientation}" = x"s" ]; then
-	o="480x480"
+	if [ -z "${3}" ]; then
+		o="480x480"
+	fi
 fi
 
 ffmpeg -i "${file}" -s "${o}" -pix_fmt rgb24 -r 10 -f gif - | \
@@ -25,4 +35,6 @@ date=$(strings "${file}" | egrep 20[0-9][0-9] | tail -1)
 if [ -n "${date}" ]; then
 	exiftool -P -CreateDate="${date}" "${gif}" && \
 		rm -f "${gif}_original"
+	date="$( echo "${date}" | sed -e 's/:/-/g' -e 's/[+-][0-9][0-9][0-9][0-9]//' )"
+	mv "${gif}" "${date}.gif"
 fi

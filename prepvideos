@@ -1,17 +1,72 @@
 #!/bin/sh
-#set -e
+set -e
+
+gififyIfLivePic() {
+	local readonly file="${1}"
+	local duration
+	local rotation
+	local scale 
+
+	local h="640"
+	local v="480"
+	local orientation="h"
+
+	echo "==> Checking if '${file}' is a live pic..."
+
+	duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -i "${file}" | awk -F. '{print $1}')
+
+	if [ "${duration}" -gt 10 ]; then
+		echo "==> Not going to gifify '${file}'."
+		return 1
+	fi
+
+	scale=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 -i "${file}" | sed -e 's/x/\//' | bc -l)
+
+	rotation=$(ffprobe -loglevel error -select_streams v:0 -show_entries stream_tags=rotate -of default=nw=1:nk=1 -i "${file}")
+
+	if [ x"${rotation}" = x"90" ]; then
+		v="${h}"
+		h="$(echo ${h}/${scale} | bc)"
+		orientation="v"
+	else
+		v="$(echo ${h}/${scale} | bc)"
+	fi
+
+
+	echo "==> Turning '${file}' into a gif..."
+	livegif "${file}" "${orientation}" "${h}x${v}"
+	mv "${file}" .livepics
+
+	return 0
+}
 
 #for file in *.m4v *mov *MOV; do
-for file in *MOV; do
+#for file in *MOV; do
+
+mkdir -p .livepics
+
+for file in `ls *mov *MOV | grep -v -- -`; do
+	if [ ! -e "${file}" ]; then
+		continue
+	fi
+	echo "=> Preparing ${file}..."
+
+	if gififyIfLivePic "${file}" ; then
+		continue
+	fi
+
 	prefix="${file%%.MOV}"
 	prefix="${prefix%%.mov}"
 	prefix="${prefix%%.m4v}"
+	suffix="${file##*.}"
 	jpg=${prefix}.jpg
-	ffmpeg -i ${file} -an -ss 00:00:01 -an -r 1 -vframes 1 -y %d.jpg
+	echo "==> Grabbing screenshot from ${file}..."
+	ffmpeg -loglevel error -i ${file} -an -ss 00:00:01 -an -r 1 -vframes 1 -y %d.jpg 2>/dev/null
 	mv 1.jpg ${jpg}
 	mv ${file} 1.MOV
 	#ffmpeg -i 1.MOV -c:a copy -vf scale=iw/2:-1 0.MOV
-	ffmpeg -i 1.MOV -c:a copy -vf scale=640:-1 -vcodec libtheora -acodec libvorbis -qscale:v 8 -qscale:a 8 small.ogv
+	echo "==> Resizing ${file}..."
+	ffmpeg -loglevel error -i 1.MOV -c:a copy -vf scale=640:-1 -vcodec libtheora -acodec libvorbis -qscale:v 8 -qscale:a 8 small.ogv
 	mv small.ogv ${prefix}-small.ogv
 	mv 1.MOV ${file}
 
@@ -19,8 +74,10 @@ for file in *MOV; do
 	if [ -z "${date}" ]; then
 		echo "Unable to add date to ${jpg} - run exiftool yourself."
 	else
-		exiftool -P -CreateDate="${date}" ${jpg}
-		mv ${prefix}.ogv ${date}.ogv
+		echo "==> Adding a date ${date} to ${jpg}..."
+		exiftool -P -CreateDate="${date}" ${jpg} 2>/dev/null
+		date="$( echo "${date}" | sed -e 's/:/-/g' -e 's/[+-][0-9][0-9][0-9][0-9]//' )"
+		mv ${file} ${date}.${suffix}
 		mv ${prefix}-small.ogv ${date}-small.ogv
 		mv ${jpg} ${date}.jpg
 		rm ${jpg}_original
@@ -34,6 +91,7 @@ for file in *.mp4; do
 	if [ ! -e ${file} ]; then
 		continue
 	fi
+	echo "=> Preparing ${file}..."
 	prefix="${file%%.mp4}"
 	jpg=${prefix}.jpg
 	ffmpeg -i ${file} -an -ss 00:00:01 -an -r 1 -vframes 1 -y %d.jpg
