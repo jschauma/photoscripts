@@ -27,7 +27,16 @@ my %FILE_DATA;
 ###
 
 sub sortpics() {
-	my @files = glob("*.gif *.jpg *.JPG *.png *.PNG");
+	verbose("Converting HEIC files to JPG...");
+	if ($OPTS{'dont'}) {
+		print "mogrify -format jpg -quality 100 *.HEIC\n";
+		print "mogrify -format jpg -quality 100 *.heic\n";
+	} else {
+		system("mogrify -format jpg -quality 100 *.HEIC");
+		system("mogrify -format jpg -quality 100 *.heic");
+	}
+
+	my @files = glob("*.gif *.jpg *.jpeg *.JPG *.JPEG *.png *.PNG");
 	verbose("Gathering data for " . $#files . " pictures...");
 
 	foreach my $f (@files) {
@@ -37,6 +46,9 @@ sub sortpics() {
 
 		if ($f =~ m/.*\.(.*)/) {
 			$suffix = lc($1);
+			if ($suffix eq "jpeg") {
+				$suffix = "jpg";
+			}
 		} else {
 			print "no suffix: $f\n";
 		}
@@ -76,6 +88,19 @@ sub sortpics() {
 				$day =~ s/:/-/g;
 				$time =~ s/:/-/g;
 			}
+		}
+
+		if (!$time) {
+			open(P, "exiftool -d '%Y-%m-%dT%H-%M-%S' -time:FileModifyDate $f | awk '{print \$NF}'|") or die "$f: $!\n";
+			while (my $line = <P>) {
+				if ($line =~ m/([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}-[0-9]{2}-[0-9]{2})/ ) {
+					$year = $1;
+					$month = $2;
+					$day = $3;
+					$time = $4;
+				}
+			}
+			close(P);
 		}
 
 		if (!$time) {
@@ -274,17 +299,20 @@ sub mogrify($) {
 	$pic =~ s/(.*)\.(jpg|gif|png)/$1/;
 	my $suffix = $2;
 
+	my $loop = "";
+	if ($suffix eq "gif") {
+		$loop = "-loop 1";
+	}
+
 	my @cmds = (
-		"rm -f $pic-thumb.jpg $pic-med.* >/dev/null 2>&1",
-		"convert $rotate -size 120x120 $pic.$suffix -resize 120x120 +profile \"*\" $pic-thumb.jpg",
+		"rm -f $pic.HEIC $pic.heic $pic-thumb.* $pic-med.* >/dev/null 2>&1",
+		"convert $rotate -size 120x120 $pic.$suffix -resize 120x120 +profile \"*\" $loop $pic-thumb.$suffix",
 	);
 
 	if ($suffix eq "gif") {
-		push(@cmds, "mv $pic-thumb-0.jpg $pic-thumb.jpg");
-		push(@cmds, "rm $pic-thumb-*");
-	} else {
-		push(@cmds, "convert $rotate -size 640x480 $pic.jpg -resize 640x480 +profile \"*\" $pic-med.jpg");
+		$loop = "-loop 0";
 	}
+	push(@cmds, "convert $rotate -size 640x480 $pic.$suffix -resize 640x480 +profile \"*\" $loop $pic-med.$suffix");
 
 	foreach my $cmd (@cmds) {
 		if ($OPTS{'dont'}) {
@@ -302,6 +330,8 @@ sub htmlify($$$) {
 	my $movie = 0;
 
 	$file =~ s/(.*)\.(jpg|gif|png)/$1/;
+	my $suffix = $2;
+
 	$prev =~ s/(.*)\.(jpg|gif|png)/$1/;
 	$next =~ s/(.*)\.(jpg|gif|png)/$1/;
 
@@ -330,12 +360,12 @@ sub htmlify($$$) {
 	$year =~ s/(\d+)-.*/$1/;
 	while (my $line = <TMPL>) {
 		if ($gif) {
-			$line =~ s/::NUM::-med.jpg/$file.gif/g;
+			$line =~ s/::NUM::-med.jpg/$file-med.gif/g;
 			$line =~ s/<a href="::NUM::.jpg">//;
 			$line =~ s/<\/a>//;
 			$line =~ s/::NUM::/$file/g;
 		} elsif ($movie) {
-			$line =~ s|<td><a href="::NUM::.jpg"><img alt="::NUM::" src="::NUM::-med.jpg" border="0"></a><br>|<td><video src="/movies/$year/$file-small.ogv" controls poster="$file-med.jpg"><br>|;
+			$line =~ s|<td><a href="::NUM::.$suffix"><img alt="::NUM::" src="::NUM::-med.$suffix" border="0"></a><br>|<td><video src="/movies/$year/$file-small.ogv" controls poster="$file-med.$suffix"><br>\n</td></tr><tr>\n<td>|;
 		} else {
 			$line =~ s/::NUM::/$file/g;
 		}
@@ -353,7 +383,7 @@ sub htmlify($$$) {
 		print INDEX "\t\t<TR>\n";
 	}
 	print INDEX "\t\t\t<TD align=\"center\" valign=\"middle\"><A href=\"$file.html\"><IMG\n";
-	print INDEX "\t\t\tsrc=\"$file-thumb.jpg\" border=\"0\" alt=\"thumbnail\"></A></TD>\n";
+	print INDEX "\t\t\tsrc=\"$file-thumb.$suffix\" border=\"0\" alt=\"thumbnail\"></A></TD>\n";
 	$TBLCOUNT++;
 
 	close(INDEX);
