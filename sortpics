@@ -367,7 +367,7 @@ sub htmlify($$$) {
 			$line =~ s/<\/a>//;
 			$line =~ s/::NUM::/$file/g;
 		} elsif ($movie) {
-			$line =~ s|<td><a href="::NUM::.$suffix"><img alt="::NUM::" src="::NUM::-med.$suffix" border="0"></a><br>|<td><video src="/movies/$year/$file-small.webm" controls poster="$file-med.$suffix"><br>\n</td></tr><tr>\n<td>|;
+			$line =~ s|<td><a href="::NUM::.$suffix"><img alt="::NUM::" src="::NUM::-med.$suffix" border="0"></a><br>|<td><video src="/movies/$year/$file-small.webm" type="video/webm" controls poster="$file-med.$suffix"><br>\n</td></tr><tr>\n<td>|;
 		} else {
 			$line =~ s/::NUM::/$file/g;
 		}
