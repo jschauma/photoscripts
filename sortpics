@@ -91,7 +91,7 @@ sub sortpics() {
 		}
 
 		if (!$time) {
-			open(P, "exiftool -d '%Y-%m-%dT%H-%M-%S' -time:FileModifyDate $f | awk '{print \$NF}'|") or die "$f: $!\n";
+			open(P, "exiftool -d '%Y-%m-%dT%H-%M-%S' -time:FileModifyDate \"$f\" | awk '{print \$NF}'|") or die "$f: $!\n";
 			while (my $line = <P>) {
 				if ($line =~ m/([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}-[0-9]{2}-[0-9]{2})/ ) {
 					$year = $1;
@@ -132,7 +132,6 @@ sub moveFiles() {
 		my $dir = $FILE_DATA{$f}{'dir'};
 
 		if ($OPTS{'timestamp'}) {
-
 			if ($f =~ m/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/) {
 				verbose("$f is already timestamped. Not renaming.", 2);
 				next;
@@ -204,7 +203,11 @@ sub createFiles() {
 		if ($OPTS{'dont'}) {
 			print "ln -s \"$f\" $fn\n";
 		} else {
-			system("ln -s \"$f\" $fn");
+			if (-l $f) {
+				verbose("\"$f\" is already a symlink.", 3);
+			} else {
+				system("ln -s \"$f\" $fn");
+			}
 		}
 
 		mogrify($fn);
@@ -212,7 +215,6 @@ sub createFiles() {
 		if ( -f "../tmpl" ) {
 			htmlify($fn, $pn, $nn);
 		}
-		$n++;
 	}
 }
 
@@ -344,7 +346,7 @@ sub htmlify($$$) {
 		$gif = 1;
 	}
 
-	if ( -f "$file-small.ogv" ) {
+	if ( -f "$file-small.webm" ) {
 		$movie = 1;
 	}
 
@@ -365,7 +367,7 @@ sub htmlify($$$) {
 			$line =~ s/<\/a>//;
 			$line =~ s/::NUM::/$file/g;
 		} elsif ($movie) {
-			$line =~ s|<td><a href="::NUM::.$suffix"><img alt="::NUM::" src="::NUM::-med.$suffix" border="0"></a><br>|<td><video src="/movies/$year/$file-small.ogv" controls poster="$file-med.$suffix"><br>\n</td></tr><tr>\n<td>|;
+			$line =~ s|<td><a href="::NUM::.$suffix"><img alt="::NUM::" src="::NUM::-med.$suffix" border="0"></a><br>|<td><video src="/movies/$year/$file-small.webm" controls poster="$file-med.$suffix"><br>\n</td></tr><tr>\n<td>|;
 		} else {
 			$line =~ s/::NUM::/$file/g;
 		}

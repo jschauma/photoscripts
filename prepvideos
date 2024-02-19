@@ -2,7 +2,7 @@
 set -e
 
 DONT=""
-TIMESTAMP_ONLY=""
+TSONLY=0
 
 gififyIfLivePic() {
 	local readonly file="${1}"
@@ -13,6 +13,10 @@ gififyIfLivePic() {
 	local h="640"
 	local v="480"
 	local orientation="h"
+
+	if [ ${TSONLY} -gt 0 ]; then
+		return 1
+	fi
 
 	echo "==> Checking if '${file}' is a live pic..."
 
@@ -57,10 +61,12 @@ resizeMovie() {
 
 	echo "==> Resizing ${file}..."
 	${DONT} mv ${file} 1.MOV
-	#${DONT} ffmpeg -i 1.MOV -c:a copy -vf scale=iw/2:-1 0.MOV
-	${DONT} ffmpeg -loglevel error -i 1.MOV -c:a copy -vf scale=640:-1 -vcodec libtheora -acodec libvorbis -qscale:v 8 -qscale:a 8 -max_muxing_queue_size 9999 small.ogv
-	${DONT} mv small.ogv ${prefix}-small.ogv
+	#${DONT} ffmpeg -loglevel error -i 1.MOV -c:a copy -vf scale=640:-1 -vcodec libtheora -acodec libvorbis -qscale:v 8 -qscale:a 8 -max_muxing_queue_size 9999 small.ogv
+	${DONT} ffmpeg -loglevel error -i 1.MOV -vf scale=640:-1 -b:v 0 -crf 30 -pass 1 -an -f webm -y /dev/null
+	${DONT} ffmpeg -loglevel error -i 1.MOV -vf scale=640:-1 -b:v 0 -crf 30 -pass 2 small.webm
+	${DONT} mv small.webm ${prefix}-small.webm
 	${DONT} mv 1.MOV ${file}
+	${DONT} rm -f ffmpeg2pass-0.log
 }
 
 renameByDate() {
@@ -77,9 +83,15 @@ renameByDate() {
 		${DONT} exiftool -P -CreateDate="${date}" ${jpg} 2>/dev/null
 		date="$( echo "${date}" | sed -e 's/:/-/g' -e 's/[+-][0-9][0-9][0-9][0-9]//' )"
 		${DONT} mv ${file} ${date}.${suffix}
-		${DONT} mv ${prefix}-small.ogv ${date}-small.ogv
-		${DONT} mv ${jpg} ${date}.jpg
-		${DONT} rm ${jpg}_original
+		if [ -f ${prefix}-small.ogv ]; then
+			${DONT} mv ${prefix}-small.ogv ${date}-small.ogv
+		fi
+		if [ -f ${jpg} ]; then
+			${DONT} mv ${jpg} ${date}.jpg
+		fi
+		if [ -f ${jpg}_original ]; then
+			${DONT} rm ${jpg}_original
+		fi
 	fi
 }
 
@@ -119,7 +131,7 @@ while getopts 'dht' opt; do
 			# NOTREACHED
 			;;
 		t)
-			TIMESTAMP_ONLY="yes"
+			TSONLY=1
 			;;
 		*)
 			usage
@@ -128,12 +140,12 @@ while getopts 'dht' opt; do
 	esac
 done
 
-#for file in *.m4v *mov *MOV; do
 #for file in *MOV; do
+#for file in $(ls *mov | grep -v -- -); do
 
 mkdir -p .livepics
 
-for file in $(ls *mov *MOV | grep -v -- -); do
+for file in *.m4v *mov *MOV; do
 	if [ ! -e "${file}" ]; then
 		continue
 	fi
@@ -148,8 +160,10 @@ for file in $(ls *mov *MOV | grep -v -- -); do
 	prefix="${prefix%%.m4v}"
 	jpg=${prefix}.jpg
 
-	createScreenshot "${file}" "${jpg}"
-	resizeMovie "${file}" "${prefix}"
+	if [ ${TSONLY} -lt 1 ]; then
+		createScreenshot "${file}" "${jpg}"
+		resizeMovie "${file}" "${prefix}"
+	fi
 	renameByDate "${file}" "${prefix}" "${jpg}"
 
 	#convert -rotate 180 ${jpg} 1.jpg && mv 1.jpg ${jpg}
